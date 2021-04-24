@@ -5,9 +5,16 @@
 *.user
 *.ncb
 *.suo
+*.pdb
 
 # Visual Studio build directories
 /win_build/Build/
+
+# Visual Studio 2015/2017 cache/options directory
+.vs/
+
+#Visual Studio Code options directory
+.vscode/
 
 # Installshield build directories
 /win_build/installerv2/BOINC
@@ -28,6 +35,9 @@
 /html/nbproject/
 *.project
 
+# CLion files
+.idea
+
 #
 *.pfx
 *.pvk
@@ -43,10 +53,17 @@
 /android/**/*.iml
 /android/**/.gradle
 /android/**/local.properties
-/android/**/.idea
+/android/**/.idea/caches
+/android/**/.idea/libraries
+/android/**/.idea/gradle.xml
+/android/**/.idea/modules.xml
+/android/**/.idea/tasks.xml
+/android/**/.idea/usage.statistics.xml
+/android/**/.idea/workspace.xml
 /android/**/build
 /android/**/captures
 /android/**/.externalNativeBuild
+/android/**/.vagrant
 /stage
 /android/BOINC/app/src/main/assets/arm*
 /android/BOINC/app/src/main/assets/mips*
@@ -96,6 +113,10 @@ test/version.inc
 *.lo
 *.a
 *.la
+py/lib/Boinc
+
+## Python bytecode
+*.pyc
 
 ## Drupal
 # ignore files with private/sensitive content in a public repo
@@ -107,12 +128,19 @@ drupal/sites/default/project
 locale/*/*.flag
 
 ## dependency builds and CI cache directories
+3rdParty/Windows/
 3rdParty/linux/
 3rdParty/mac/
 3rdParty/buildCache/
+3rdParty/android/
 
 .libs/
 svn_version.h
+
+## code coverage
+*.gcov
+*.gcno
+*.gcda
 
 # list of executables
 apps/1sec
@@ -132,15 +160,18 @@ lib/crypt_prog
 lib/parse_test
 py/lib.*/
 py/build/
-samples/condor/boinc_gahp
-samples/example_app/uc2
-samples/example_app/ucn
-samples/multi_thread/multi_thread
-samples/sleeper/sleeper
-samples/vboxmonitor/vboxmonitor
-samples/vboxwrapper/vboxwrapper
-samples/worker/worker
-samples/wrapper/wrapper
+samples/condor/*boinc_gahp
+samples/example_app/*uc2
+samples/example_app/*ucn
+samples/multi_thread/*multi_thread
+samples/sleeper/*sleeper
+samples/vboxmonitor/*vboxmonitor
+samples/vboxwrapper/*vboxwrapper
+samples/worker/*worker
+samples/wrapper/*wrapper
+samples/openclapp/*openclapp
+samples/wrappture/*wrappture_example
+samples/wrappture/*fermi
 sched/adjust_user_priority
 sched/antique_file_deleter
 sched/census

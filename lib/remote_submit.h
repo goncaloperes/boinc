@@ -69,6 +69,17 @@ struct JOB_STATUS {
     JOB_STATUS(){}
 };
 
+struct JOB_PARAMS {
+    // 0 means unspecified for all params
+    double rsc_disk_bound;
+    double rsc_fpops_est;
+    double rsc_fpops_bound;
+    double rsc_memory_bound;
+    double delay_bound;
+    JOB_PARAMS(): rsc_disk_bound(0), rsc_fpops_est(0),rsc_fpops_bound(0),
+        rsc_memory_bound(0), delay_bound(0) {}
+};
+
 struct QUERY_BATCH_SET_REPLY {
     double server_time;         // server time at start of query
     std::vector<int> batch_sizes;    // how many jobs in each of the queried batches
@@ -151,6 +162,17 @@ extern int submit_jobs(
     int app_version_num = 0
 );
 
+extern int submit_jobs_params(
+    const char* project_url,
+    const char* authenticator,
+    char app_name[256],
+    int batch_id,
+    std::vector<JOB> jobs,
+    std::string& error_msg,
+    JOB_PARAMS &job_params,
+    int app_version_num
+);
+
 extern int estimate_batch(
     const char* project_url,
     const char* authenticator,
@@ -187,6 +209,7 @@ struct BATCH_STATUS {
     double credit_estimate;     // original estimate for credit
     double credit_canonical;    // if completed, granted credit
 
+    BATCH_STATUS(){}
     int parse(XML_PARSER&);
     void print();
 };
@@ -207,6 +230,7 @@ struct JOB_STATE {
                                     // the ID of the canonical instance
     int n_outfiles;                 // number of output files
 
+    JOB_STATE(){}
     int parse(XML_PARSER&);
     void print();
 };

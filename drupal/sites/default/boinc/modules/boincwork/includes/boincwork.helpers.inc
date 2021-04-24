@@ -407,12 +407,12 @@ function boincwork_generate_prefs_element(&$form, $type, $elements, $user_prefs 
       
       // Translate elements as appropriate
       if ($title) {
-        i18nstrings_update('project:prefs_xml', $title);
-        $title = i18nstrings('project:prefs_xml', $title);
+        i18nstrings_update('project:prefs_xml', _boinctranslate_supertrim($title));
+        $title = i18nstrings('project:prefs_xml', _boinctranslate_supertrim($title));
       }
       if ($description) {
-        i18nstrings_update('project:prefs_xml', $description);
-        $description = i18nstrings('project:prefs_xml', $description);
+        i18nstrings_update('project:prefs_xml', _boinctranslate_supertrim($description));
+        $description = i18nstrings('project:prefs_xml', _boinctranslate_supertrim($description));
       }
       
       $form[$name] = array(
@@ -455,12 +455,12 @@ function boincwork_generate_prefs_element(&$form, $type, $elements, $user_prefs 
       
       // Translate elements as appropriate
       if ($title) {
-        i18nstrings_update('project:prefs_xml', $title);
-        $title = i18nstrings('project:prefs_xml', $title);
+        i18nstrings_update('project:prefs_xml', _boinctranslate_supertrim($title));
+        $title = i18nstrings('project:prefs_xml', _boinctranslate_supertrim($title));
       }
       if ($description) {
-        i18nstrings_update('project:prefs_xml', $description);
-        $description = i18nstrings('project:prefs_xml', $description);
+        i18nstrings_update('project:prefs_xml', _boinctranslate_supertrim($description));
+        $description = i18nstrings('project:prefs_xml', _boinctranslate_supertrim($description));
       }
       
       $form[$name] = array(
@@ -512,12 +512,12 @@ function boincwork_generate_prefs_element(&$form, $type, $elements, $user_prefs 
       
       // Translate elements as appropriate
       if ($title) {
-        i18nstrings_update('project:prefs_xml', $title);
-        $title = i18nstrings('project:prefs_xml', $title);
+        i18nstrings_update('project:prefs_xml', _boinctranslate_supertrim($title));
+        $title = i18nstrings('project:prefs_xml', _boinctranslate_supertrim($title));
       }
       if ($description) {
-        i18nstrings_update('project:prefs_xml', $description);
-        $description = i18nstrings('project:prefs_xml', $description);
+        i18nstrings_update('project:prefs_xml', _boinctranslate_supertrim($description));
+        $description = i18nstrings('project:prefs_xml', _boinctranslate_supertrim($description));
       }
       
       $form[$name] = array(
@@ -536,8 +536,8 @@ function boincwork_generate_prefs_element(&$form, $type, $elements, $user_prefs 
     
       // Translate elements as appropriate
       if ($title) {
-        i18nstrings_update('project:prefs_xml', $title);
-        $title = i18nstrings('project:prefs_xml', $title);
+        i18nstrings_update('project:prefs_xml', _boinctranslate_supertrim($title));
+        $title = i18nstrings('project:prefs_xml', _boinctranslate_supertrim($title));
       }
     
     $form['applications'] = array(
@@ -596,8 +596,8 @@ function boincwork_generate_prefs_element(&$form, $type, $elements, $user_prefs 
       
       // Translate elements as appropriate
       if ($title) {
-        i18nstrings_update('project:prefs_xml', $title);
-        $title = i18nstrings('project:prefs_xml', $title);
+        i18nstrings_update('project:prefs_xml', _boinctranslate_supertrim($title));
+        $title = i18nstrings('project:prefs_xml', _boinctranslate_supertrim($title));
       }
       
       $form[$name] = array(
@@ -625,8 +625,8 @@ function boincwork_generate_prefs_element(&$form, $type, $elements, $user_prefs 
       
       // Translate elements as appropriate
       if ($title) {
-        i18nstrings_update('project:prefs_xml', $title);
-        $title = i18nstrings('project:prefs_xml', $title);
+        i18nstrings_update('project:prefs_xml', _boinctranslate_supertrim($title));
+        $title = i18nstrings('project:prefs_xml', _boinctranslate_supertrim($title));
       }
       
       $form[$name] = array(
@@ -992,6 +992,31 @@ function boincwork_ignore_user_remove_user($iuid = NULL) {
 }
 
 /*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *
+ * Consent to Privacy funtions
+ *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+
+/**
+ * Load consent types for privacy preferences from database. Returns
+ * an array of the relevant consent_types. Otherwise returns an emtpy
+ * array.
+ */
+function boincwork_load_privacyconsenttypes() {
+
+  db_set_active('boinc_rw');
+  $db_result = db_query("SELECT id,shortname,description FROM consent_type WHERE enabled=1 AND privacypref=1 ORDER by project_specific ASC");
+  db_set_active('drupal');
+
+  if ($db_result) {
+    $consent_types = array();
+    while ($result = db_fetch_array($db_result)) {
+      $consent_types[] = $result;
+    }
+    return $consent_types;
+  }
+  return array();
+}
+
+/*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *
  * Utility functions
  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
 
@@ -1112,7 +1137,6 @@ function boincwork_format_stats($number, $max_digits = 4) {
   
   return $number;
 }
-
 
   //------------------------------------------------------------------------------------------------
   //  load_configuration(): Convert structured text/xml to array
@@ -1973,7 +1997,7 @@ function pretty_application_version($appverid, $vernum, $plan_class, $plfm) {
     case ANON_PLATFORM_NVIDIA:
       return "Anonymous platform NVIDIA GPU";
     case ANON_PLATFORM_ATI:
-      return "Anonymous platform ATI GPU";
+      return "Anonymous platform AMD GPU";
     case ANON_PLATFORM_INTEL:
       return "Anonymous platform Intel GPU";
     case 0:

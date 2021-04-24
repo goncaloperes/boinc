@@ -285,11 +285,9 @@ int create_batch(
     sprintf(request,
         "<create_batch>\n"
         "   <authenticator>%s</authenticator>\n"
-        "      <batch>\n"
-        "         <batch_name>%s</batch_name>\n"
-        "         <app_name>%s</app_name>\n"
-        "         <expire_time>%f</expire_time>\n"
-        "      </batch>\n"
+        "   <batch_name>%s</batch_name>\n"
+        "   <app_name>%s</app_name>\n"
+        "   <expire_time>%f</expire_time>\n"
         "</create_batch>\n",
         authenticator,
         batch_name,
@@ -398,6 +396,29 @@ int submit_jobs(
     string& error_msg,
     int app_version_num
 ) {
+    JOB_PARAMS jp;
+    return submit_jobs_params(
+        project_url,
+        authenticator,
+        app_name,
+        batch_id,
+        jobs,
+        error_msg,
+        jp,
+        app_version_num
+    );
+}
+
+int submit_jobs_params(
+    const char* project_url,
+    const char* authenticator,
+    char app_name[256],
+    int batch_id,
+    vector<JOB> jobs,
+    string& error_msg,
+    JOB_PARAMS &job_params,
+    int app_version_num
+) {
     char buf[1024], url[1024];
     sprintf(buf,
         "<submit_batch>\n"
@@ -405,11 +426,23 @@ int submit_jobs(
         "<batch>\n"
         "   <batch_id>%d</batch_id>\n"
         "   <app_name>%s</app_name>\n"
-        "   <app_version_num>%d</app_version_num>\n",
+        "   <app_version_num>%d</app_version_num>\n"
+        "   <job_params>\n"
+        "       <rsc_disk_bound>%f</rsc_disk_bound>\n"
+        "       <rsc_fpops_est>%f</rsc_fpops_est>\n"
+        "       <rsc_fpops_bound>%f</rsc_fpops_bound>\n"
+        "       <rsc_memory_bound>%f</rsc_memory_bound>\n"
+        "       <delay_bound>%f</delay_bound>\n"
+        "   </job_params>\n",
         authenticator,
         batch_id,
         app_name,
-        app_version_num
+        app_version_num,
+        job_params.rsc_disk_bound,
+        job_params.rsc_fpops_est,
+        job_params.rsc_fpops_bound,
+        job_params.rsc_memory_bound,
+        job_params.delay_bound
     );
     string request = buf;
     for (unsigned int i=0; i<jobs.size(); i++) {
@@ -567,7 +600,8 @@ int query_batch_set(
 }
 
 int BATCH_STATUS::parse(XML_PARSER& xp) {
-    memset(this, 0, sizeof(BATCH_STATUS));
+    static const BATCH_STATUS x;
+    *this = x;
     while (!xp.get_tag()) {
         if (xp.match_tag("/batch")) {
             return 0;
@@ -677,7 +711,8 @@ int query_batches(
 }
 
 int JOB_STATE::parse(XML_PARSER& xp) {
-    memset(this, 0, sizeof(JOB_STATE));
+    static const JOB_STATE x;
+    *this = x;
     while (!xp.get_tag()) {
         if (xp.match_tag("/job")) {
             return 0;

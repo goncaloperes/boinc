@@ -54,6 +54,7 @@
  * @see zen_process()
  */
 ?>
+
 <div class="<?php print $classes; ?> clearfix">
   <?php
     static $authors;
@@ -82,6 +83,9 @@
     } 
     ?>
   
+  <?php
+    $ddname = 'flag_abuse_reason-dropdown-comment-' . $comment->cid;
+  ?>
   <div class="user">
     <?php
       $account = user_load(array('uid' => $comment->uid));
@@ -102,6 +106,12 @@
     ?>
     <div class="name"><?php print $author; ?></div>
     <?php if ($account->uid): ?>
+      <?php if (in_array('moderator', $account->roles)): ?>
+        <div class="moderator"><?php print bts('Moderator', array(), NULL, 'boinc:user-info'); ?></div>
+      <?php endif; ?>
+      <?php if (in_array('administrator', $account->roles)): ?>
+        <div class="administrator"><?php print bts('Administrator', array(), NULL, 'boinc:user-info'); ?></div>
+      <?php endif; ?>
       <?php $nf = new NumberFormatter($locality, NumberFormatter::DECIMAL); ;?>
       <?php $nf->setAttribute(NumberFormatter::MIN_FRACTION_DIGITS, 0); ;?>
       <?php $nf->setAttribute(NumberFormatter::MAX_FRACTION_DIGITS, 0); ;?>
@@ -173,6 +183,15 @@
         <span class="label">)</span>
       </div>
     <?php endif; ?>
+    <div class="dropdown">
+      <div id="<?php print $ddname; ?>" class="dropdown-content">
+        <?php print flag_create_link('abuse_comment_1', $comment->cid); ?>
+        <?php print flag_create_link('abuse_comment_2', $comment->cid); ?>
+        <?php print flag_create_link('abuse_comment_3', $comment->cid); ?>
+        <?php print flag_create_link('abuse_comment_4', $comment->cid); ?>
+        <?php print flag_create_link('abuse_comment_5', $comment->cid); ?>
+      </div>
+    </div>
     <div class="content">
       <?php print $content; ?>
       <?php if ($signature AND $show_signatures): ?>

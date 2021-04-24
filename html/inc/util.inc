@@ -17,6 +17,9 @@
 // along with BOINC.  If not, see <http://www.gnu.org/licenses/>.
 
 // Utility functions for BOINC web pages
+// Stuff that's not web-specific (e.g. that's used in non-web scripts)
+// should go in util_basic.inc
+
 
 error_reporting(E_ALL);
 ini_set('display_errors', true);
@@ -31,15 +34,24 @@ require_once("../inc/translation.inc");
 require_once("../inc/profile.inc");
 require_once("../inc/bootstrap.inc");
 
-// parse some stuff from config (do it here for efficiency)
+// parse some stuff from config.xml (do it here for efficiency)
 //
 $config = get_config();
+global $master_url;
 $master_url = parse_config($config , "<master_url>");
 $recaptcha_public_key = parse_config($config, "<recaptcha_public_key>");
 $recaptcha_private_key = parse_config($config, "<recaptcha_private_key>");
 
-// don't allow /... at the end of URL
+// the following default to on
+//
+$x = parse_config($config, "<user_country>");
+define('USER_COUNTRY', ($x===null)?1:(int)$x);
 
+$x = parse_config($config, "<user_url>");
+define('USER_URL', ($x===null)?1:(int)$x);
+
+// don't allow /... at the end of URL
+//
 if (array_key_exists("PATH_INFO", $_SERVER)) {
     die("bad URL");
 }
@@ -97,6 +109,9 @@ if (!defined('USER_HOME')) {
 if (!defined('POST_MAX_LINKS')) {
     define('POST_MAX_LINKS', 0);
 }
+if (!defined('DARK_MODE')) {
+    define('DARK_MODE', false);
+}
 
 // sleep this long on any login failure
 // (slow the rate of hacker attacks)
@@ -123,7 +138,7 @@ function secure_url_base() {
 }
 
 function url_base() {
-    return secure_url_base();
+    return is_https()?secure_url_base():URL_BASE;
 }
 
 function send_cookie($name, $value, $permanent, $ops=false) {
@@ -231,6 +246,10 @@ function page_head(
     global $caching, $cache_control_extra, $did_page_head;
     global $is_login_page, $fixed_navbar;
 
+    if ($did_page_head) {
+        return;
+    }
+    
     $did_page_head = true;
     $url_base = url_base();
 
@@ -239,15 +258,24 @@ function page_head(
 
     if (!$caching) {
         header("Content-type: text/html; charset=utf-8");
-        header ("Expires: Mon, 26 Jul 1997 05:00:00 UTC");    // Date in the past
-        header ("Last-Modified: " . gmdate("D, d M Y H:i:s") . " UTC"); // always modified
-        header ("Cache-Control: $cache_control_extra no-cache, must-revalidate, post-check=0, pre-check=0");  // HTTP/1.1
-        header ("Pragma: no-cache");                          // HTTP/1.0
+        header("Expires: Mon, 26 Jul 1997 05:00:00 UTC");
+            // Date in the past
+        header("Last-Modified: " . gmdate("D, d M Y H:i:s") . " UTC");
+            // always modified
+        header("Cache-Control: $cache_control_extra no-cache, must-revalidate, post-check=0, pre-check=0");
+            // for HTTP/1.1
+        header("Pragma: no-cache");
+            // for HTTP/1.0
     }
 
     echo '<!DOCTYPE html>
         <html lang="en">
         <head>
+    ';
+    if (defined('GLOBAL_HEAD_EXTRA')) {
+        echo GLOBAL_HEAD_EXTRA;
+    }
+    echo '
         <meta name="viewport" content="width=device-width, initial-scale=1">
     ';
     if ($head_extra) {
@@ -261,8 +289,29 @@ function page_head(
     echo "<title>$t</title>\n";
     echo '
         <meta charset="utf-8">
-        <link type="text/css" rel="stylesheet" href="'.secure_url_base().'/bootstrap.min.css" media="all">
     ';
+    if (DARK_MODE) {
+        echo <<<EOT
+<script>
+  if (window.matchMedia('(prefers-color-scheme: dark)').media === 'not all') {
+      console.log("foobar");
+    document.documentElement.style.display = 'none';
+    document.head.insertAdjacentHTML(
+        'beforeend',
+        '<link rel="stylesheet" href="sample_bootstrap.min.css" onload="document.documentElement.style.display = \'\'"><link rel="stylesheet" href="custom.css">'
+    );
+  }
+</script>
+<link rel="stylesheet" href="bootstrap_darkly.min.css" media="(prefers-color-scheme: dark)">
+<link rel="stylesheet" href="custom_dark.css" media="(prefers-color-scheme: dark)">
+<link rel="stylesheet" href="sample_bootstrap.min.css" media="(prefers-color-scheme: no-preference), (prefers-color-scheme: light)">
+<link rel="stylesheet" href="custom.css" media="(prefers-color-scheme: no-preference), (prefers-color-scheme: light)">
+EOT;
+    } else {
+        echo '
+            <link type="text/css" rel="stylesheet" href="'.secure_url_base().'/bootstrap.min.css" media="all">
+        ';
+    }
     if (defined('STYLESHEET')) {
         $stylesheet = $url_base.STYLESHEET;
         echo "
@@ -303,7 +352,6 @@ function page_head(
         break;
     }
     project_banner($title, $url_prefix, $is_main);
-    check_web_stopped();
 }
 }
 
@@ -518,12 +566,6 @@ function row_heading($x, $class='bg-primary') {
     );
 }
 
-// return hard-to-guess string of 32 random hex chars
-//
-function random_string() {
-    return md5(uniqid(rand(), true));
-}
-
 function url_tokens($auth) {
     $now = time();
     $ttok = md5((string)$now.$auth);
@@ -542,10 +584,14 @@ function valid_tokens($auth) {
     $tnow = get_str('tnow', true);
     $ttok = get_str('ttok', true);
     if (!$tnow) {
-        $tnow = $_POST['tnow'];
+      if (isset($_POST['tnow'])) {
+          $tnow = $_POST['tnow'];
+      }
     }
     if (!$ttok) {
-        $ttok = $_POST['ttok'];
+      if (isset($_POST['ttok'])) {
+          $ttok = $_POST['ttok'];
+      }
     }
     if (!$tnow) return false;
     if (!$ttok) return false;
@@ -638,7 +684,7 @@ function bbcode_info() {
 
 // strip slashes if magic quotes in effect
 function undo_magic_quotes($x) {
-    if (get_magic_quotes_gpc()) {
+    if (version_compare(PHP_VERSION, '5.4.0') < 0 && get_magic_quotes_gpc()) {
         return stripslashes($x);
     }
     return $x;
@@ -933,6 +979,9 @@ function get_app_types() {
         if (strstr($av->plan_class, "ati")) {
             $t->ati = true;
             $t->count++;
+        } else if (strstr($av->plan_class, "amd")) {
+            $t->ati = true;
+            $t->count++;
         } else if (strstr($av->plan_class, "cuda")) {
             $t->cuda = true;
             $t->count++;
@@ -1010,14 +1059,20 @@ function do_download($path,$name="") {
     readfile($path);
 }
 
-function redirect_to_secure_url($url) {
+// if have SSL but not using it, redirect
+//
+function redirect_to_secure_url() {
     if (defined('SECURE_URL_BASE')
         && strstr(SECURE_URL_BASE, "https://")
-        && (!isset($_SERVER['HTTPS']) || !$_SERVER['HTTPS'])
+        && empty($_SERVER['HTTPS'])
     ) {
-        Header("Location: ".SECURE_URL_BASE."/$url");
+        Header("Location: https://".$_SERVER['HTTP_HOST'].$_SERVER['REQUEST_URI']);
         exit;
     }
+}
+
+if (php_sapi_name() != "cli") {
+    redirect_to_secure_url();
 }
 
 function badges_string($is_user, $item, $height) {
@@ -1042,10 +1097,6 @@ function show_badges_row($is_user, $item) {
     if ($x) {
         row2("Badges", $x);
     }
-}
-
-function dtime() {
-    return microtime(true);
 }
 
 // If this request is from a BOINC client, return its version as MMmmRR.
@@ -1104,11 +1155,34 @@ function google_search_form($url) {
         <form method=get action=\"https://google.com/search\">
         <input type=hidden name=domains value=\"$url\">
         <input type=hidden name=sitesearch value=\"$url\">
-        <input class=small name=q size=20>
-        <input class=small type=submit value=".tra("Search").">
+        <input name=q size=20>
+        <input type=submit value=".tra("Search").">
         </form>
         </nobr>
     ";
+}
+
+// use the following around text with long lines,
+// to limit the width and make it more readable.
+//
+function text_start($width=640) {
+    echo sprintf("<div style=\"max-width: %dpx;\">\n", $width);
+}
+function text_end() {
+    echo "</div>\n";
+}
+
+// express a size in terms of GB or MB
+//
+function size_string($x) {
+    if ($x > GIGA) {
+        return number_format($x/GIGA, 2)." GB";
+    }
+    return number_format($x/MEGA, 2)." MB";
+}
+
+function cert_filename() {
+    return defined("CERT_FILENAME")?CERT_FILENAME:"cert1.php";
 }
 
 $cvs_version_tracker[]="\$Id$";  //Generated automatically - do not edit

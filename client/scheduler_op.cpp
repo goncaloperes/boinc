@@ -27,10 +27,6 @@
 #include <ctime>
 #endif
 
-#ifdef _MSC_VER
-#define snprintf _snprintf
-#endif
-
 #include "error_numbers.h"
 #include "filesys.h"
 #include "parse.h"
@@ -558,6 +554,7 @@ void SCHEDULER_REPLY::clear() {
     send_job_log = 0;
     scheduler_version = 0;
     got_rss_feeds = false;
+    too_recent = false;
 }
 
 SCHEDULER_REPLY::SCHEDULER_REPLY() {
@@ -834,6 +831,9 @@ int SCHEDULER_REPLY::parse(FILE* in, PROJECT* project) {
             file_deletes.push_back(delete_file_name);
         } else if (xp.parse_str("message", msg_buf, sizeof(msg_buf))) {
             parse_attr(attr_buf, "priority", pri_buf, sizeof(pri_buf));
+            if (strstr(msg_buf, "too recent")) {
+                too_recent = true;
+            }
             USER_MESSAGE um(msg_buf, pri_buf);
             messages.push_back(um);
             continue;
@@ -933,8 +933,6 @@ int SCHEDULER_REPLY::parse(FILE* in, PROJECT* project) {
 }
 #endif
 
-USER_MESSAGE::USER_MESSAGE(char* m, char* p) {
-    message = m;
-    priority = p;
+USER_MESSAGE::USER_MESSAGE(char* m, char* p) : message(m), priority(p) {
 }
 

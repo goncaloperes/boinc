@@ -29,18 +29,25 @@ require_once("../inc/submit_util.inc");
 error_reporting(E_ALL);
 ini_set('display_errors', true);
 ini_set('display_startup_errors', true);
+ini_set("memory_limit", "4G");
 
 function get_wu($name) {
     $name = BoincDb::escape_string($name);
     $wu = BoincWorkunit::lookup("name='$name'");
-    if (!$wu) xml_error(-1, "no job named $name was found");
+    if (!$wu) {
+        log_write("no job named $name was found");
+        xml_error(-1, "no job named $name was found");
+    }
     return $wu;
 }
 
 function get_submit_app($name) {
     $name = BoincDb::escape_string($name);
     $app = BoincApp::lookup("name='$name'");
-    if (!$app) xml_error(-1, "no app named $name was found");
+    if (!$app) {
+        log_write("no app named $name was found");
+        xml_error(-1, "no app named $name was found");
+    }
     return $app;
 }
 
@@ -61,6 +68,7 @@ function batch_flop_count($r, $template) {
         } else if ($t) {
             $x += $t;
         } else {
+            log_write("no rsc_fpops_est given for job");
             xml_error(-1, "no rsc_fpops_est given for job");
         }
     }
@@ -96,6 +104,7 @@ function read_input_template($app, $r) {
     if (file_exists($path)) {
         $x = simplexml_load_file($path);
         if (!$x) {
+            log_write("couldn't parse input template file $path");
             xml_error(-1, "couldn't parse input template file $path");
         }
         return $x;
@@ -111,6 +120,7 @@ function check_max_jobs_in_progress($r, $user_submit) {
     $n = $db->get_int($query, 'total');
     if ($n === false) return;
     if ($n + count($r->batch->job) > $user_submit->max_jobs_in_progress) {
+        log_write("limit on jobs in progress exceeded");
         xml_error(-1, "limit on jobs in progress exceeded");
     }
 }
@@ -137,6 +147,7 @@ function validate_batch($jobs, $template) {
     foreach($jobs as $job) {
         $m = count($job->input_files);
         if ($n != $m) {
+            log_write("wrong # of input files for job $i: need $n, got $m");
             xml_error(-1, "wrong # of input files for job $i: need $n, got $m");
         }
         $i++;
@@ -159,12 +170,14 @@ function stage_file($file) {
         //
         $md5 = md5_file($file->source);
         if (!$md5) {
+            log_write("Can't get MD5 of file $file->source");
             xml_error(-1, "Can't get MD5 of file $file->source");
         }
         $name = job_file_name($md5);
         $path = dir_hier_path($name, $download_dir, $fanout);
         if (file_exists($path)) return $name;
         if (!copy($file->source, $path)) {
+            log_write("can't copy file from $file->source to $path");
             xml_error(-1, "can't copy file from $file->source to $path");
         }
         return $name;
@@ -173,16 +186,19 @@ function stage_file($file) {
     case "inline":
         $md5 = md5($file->source);
         if (!$md5) {
+            log_write("Can't get MD5 of inline data");
             xml_error(-1, "Can't get MD5 of inline data");
         }
         $name = job_file_name($md5);
         $path = dir_hier_path($name, $download_dir, $fanout);
         if (file_exists($path)) return $name;
         if (!file_put_contents($path, $file->source)) {
+            log_write("can't write to file $path");
             xml_error(-1, "can't write to file $path");
         }
         return $name;
     }
+    log_write(-1, "unsupported file mode: $file->mode");
     xml_error(-1, "unsupported file mode: $file->mode");
 }
 
@@ -201,7 +217,7 @@ function stage_files(&$jobs) {
 // submit a list of jobs with a single create_work command.
 //
 function submit_jobs(
-    $jobs, $template, $app, $batch_id, $priority, $app_version_num,
+    $jobs, $job_params, $app, $batch_id, $priority, $app_version_num,
     $input_template_filename,        // batch-level; can also specify per job
     $output_template_filename
 ) {
@@ -240,11 +256,18 @@ function submit_jobs(
             $f = $output_templates[$job->output_template_xml];
             $x .= " --result_template $f";
         }
+        if (isset($job->priority)) {
+            $x .= " --priority $job->priority";
+        }
         $x .= "\n";
     }
 
     $errfile = "/tmp/create_work_" . getmypid() . ".err";
-    $cmd = "cd " . project_dir() . "; ./bin/create_work --appname $app->name --batch $batch_id --priority $priority";
+    $cmd = "cd " . project_dir() . "; ./bin/create_work --appname $app->name --batch $batch_id";
+    if ($priority !== null) {
+        $cmd .= " --priority $priority";
+    }
+
     if ($input_template_filename) {
         $cmd .= " --wu_template templates/$input_template_filename";
     }
@@ -253,6 +276,21 @@ function submit_jobs(
     }
     if ($app_version_num) {
         $cmd .= " --app_version_num $app_version_num";
+    }
+    if ($job_params->rsc_disk_bound) {
+        $cmd .= " --rsc_disk_bound $job_params->rsc_disk_bound";
+    }
+    if ($job_params->rsc_fpops_est) {
+        $cmd .= " --rsc_fpops_est $job_params->rsc_fpops_est";
+    }
+    if ($job_params->rsc_fpops_bound) {
+        $cmd .= " --rsc_fpops_bound $job_params->rsc_fpops_bound";
+    }
+    if ($job_params->rsc_memory_bound) {
+        $cmd .= " --rsc_memory_bound $job_params->rsc_memory_bound";
+    }
+    if ($job_params->delay_bound) {
+        $cmd .= " --delay_bound $job_params->delay_bound";
     }
     $cmd .= " --stdin >$errfile 2>&1";
     $h = popen($cmd, "w");
@@ -356,6 +394,9 @@ function xml_get_jobs($r) {
             }
             $job->input_files[] = $file;
         }
+        if (isset($j->priority)) {
+            $job->priority = (int)$j->priority;
+        }
         $jobs[] = $job;
         if ($job->input_template) {
             make_input_template($job);
@@ -367,39 +408,11 @@ function xml_get_jobs($r) {
     return $jobs;
 }
 
-// $r is a simplexml object for the request message
+// - compute batch FLOP count
+// - run adjust_user_priorities to increment user_submit.logical_start_time
+// - return that (use as batch logical end time and job priority)
 //
-function submit_batch($r) {
-    xml_start_tag("submit_batch");
-    $app = get_submit_app((string)($r->batch->app_name));
-    list($user, $user_submit) = authenticate_user($r, $app);
-    $jobs = xml_get_jobs($r);
-    $template = read_input_template($app, $r);
-    if ($template) {
-        validate_batch($jobs, $template);
-    }
-    stage_files($jobs);
-    $njobs = count($jobs);
-    $now = time();
-    $app_version_num = (int)($r->batch->app_version_num);
-    $batch_id = (int)($r->batch->batch_id);
-    if ($batch_id) {
-        $batch = BoincBatch::lookup_id($batch_id);
-        if (!$batch) {
-            xml_error(-1, "no batch $batch_id");
-        }
-        if ($batch->user_id != $user->id) {
-            xml_error(-1, "not owner of batch");
-        }
-        if ($batch->state != BATCH_STATE_INIT) {
-            xml_error(-1, "batch not in init state");
-        }
-    }
-
-    // - compute batch FLOP count
-    // - run adjust_user_priorities to increment user_submit.logical_start_time
-    // - use that for batch logical end time and job priority
-    //
+function logical_end_time($r, $jobs, $user, $app) {
     $total_flops = 0;
     foreach($jobs as $job) {
         //print_r($job);
@@ -407,6 +420,8 @@ function submit_batch($r) {
             $total_flops += $job->rsc_fpops_est;
         } else if ($job->input_template && $job->input_template->workunit->rsc_fpops_est) {
             $total_flops += (double) $job->input_template->workunit->rsc_fpops_est;
+        } else if ($r->batch->job_params->rsc_fpops_est) {
+            $total_flops += (double) $r->batch->job_params->rsc_fpops_est;
         } else {
             $x = (double) $template->workunit->rsc_fpops_est;
             if ($x) {
@@ -421,47 +436,105 @@ function submit_batch($r) {
     if (!is_numeric($x) || (double)$x == 0) {
         xml_error(-1, "$cmd returned $x");
     }
-    $let = (double)$x;
+    return (double)$x;
+}
+
+// $r is a simplexml object encoding the request message
+//
+function submit_batch($r) {
+    xml_start_tag("submit_batch");
+    $app = get_submit_app((string)($r->batch->app_name));
+    list($user, $user_submit) = authenticate_user($r, $app);
+    $jobs = xml_get_jobs($r);
+    $template = read_input_template($app, $r);
+    if ($template) {
+        validate_batch($jobs, $template);
+    }
+    stage_files($jobs);
+    $njobs = count($jobs);
+    $now = time();
+    $app_version_num = (int)($r->batch->app_version_num);
+
+    // batch may or may not already exist.
+    // If it does, make sure it's owned by this user
+    //
+    $batch_id = (int)($r->batch->batch_id);
+    if ($batch_id) {
+        $batch = BoincBatch::lookup_id($batch_id);
+        if (!$batch) {
+            log_write("not batch $batch_id");
+            xml_error(-1, "no batch $batch_id");
+        }
+        if ($batch->user_id != $user->id) {
+            log_write("not owner of batch");
+            xml_error(-1, "not owner of batch");
+        }
+        if ($batch->state != BATCH_STATE_INIT) {
+            log_write("batch not in init state");
+            xml_error(-1, "batch not in init state");
+        }
+    }
+
+    // compute a priority for the jobs
+    //
+    $priority = null;
+    $let = 0;
+    if ($r->batch->allocation_priority) {
+        $let = logical_end_time($r, $jobs, $user, $app);
+        $priority = -(int)$let;
+    } else if (isset($r->batch->priority)) {
+        $priority = (int)$r->batch->priority;
+    }
 
     if ($batch_id) {
-        $njobs = count($jobs);
         $ret = $batch->update("njobs=$njobs, logical_end_time=$let");
-        if (!$ret) xml_error(-1, "batch->update() failed");
+        if (!$ret) {
+            log_write("batch update to njobs failed");
+            xml_error(-1, "batch->update() failed");
+        }
+        log_write("adding jobs to existing batch $batch_id");
     } else {
         $batch_name = (string)($r->batch->batch_name);
         $batch_name = BoincDb::escape_string($batch_name);
+        $state = BATCH_STATE_INIT;
         $batch_id = BoincBatch::insert(
-            "(user_id, create_time, njobs, name, app_id, logical_end_time, state) values ($user->id, $now, $njobs, '$batch_name', $app->id, $let, ".BATCH_STATE_INIT.")"
+            "(user_id, create_time, logical_start_time, logical_end_time, est_completion_time, njobs, fraction_done, nerror_jobs, state, completion_time, credit_estimate, credit_canonical, credit_total, name, app_id, project_state, description, expire_time) values ($user->id, $now, 0, $let, 0, $njobs, 0, 0, $state, 0, 0, 0, 0, '$batch_name', $app->id, 0, '', 0)"
         );
         if (!$batch_id) {
+            log_write("can't create batch");
             xml_error(-1, "Can't create batch: ".BoincDb::error());
         }
         $batch = BoincBatch::lookup_id($batch_id);
+        log_write("created batch $batch_id");
     }
     
-    if ($r->batch->input_template_filename) {
-        $input_template_filename = $r->batch->input_template_filename;
-    } else {
-        $input_template_filename = null;
-    }
+    $job_params = new StdClass;
+    $job_params->rsc_disk_bound = (double) $r->batch->job_params->rsc_disk_bound;
+    $job_params->rsc_fpops_est = (double) $r->batch->job_params->rsc_fpops_est;
+    $job_params->rsc_fpops_bound = (double) $r->batch->job_params->rsc_fpops_bound;
+    $job_params->rsc_memory_bound = (double) $r->batch->job_params->rsc_memory_bound;
+    $job_params->delay_bound = (double) $r->batch->job_params->delay_bound;
+        // could add quorum-related stuff
 
-    if ($r->batch->output_template_filename) {
-        $output_template_filename = $r->batch->output_template_filename;
-    } else {
-        $output_template_filename = null;
-    }
+    $input_template_filename = (string) $r->batch->input_template_filename;
+    $output_template_filename = (string) $r->batch->output_template_filename;
+        // possibly empty
     
     submit_jobs(
-        $jobs, $template, $app, $batch_id, $let, $app_version_num,
+        $jobs, $job_params, $app, $batch_id, $priority, $app_version_num,
         $input_template_filename,
         $output_template_filename
     );
 
     // set state to IN_PROGRESS only after creating jobs;
-    // otherwise we might flag batch as COMPLETED
+    // otherwise something else might flag batch as COMPLETE
     //
     $ret = $batch->update("state= ".BATCH_STATE_IN_PROGRESS);
-    if (!$ret) xml_error(-1, "batch->update() failed");
+    if (!$ret) {
+        log_write("batch update to IN_PROGRESS failed");
+        xml_error(-1, "batch->update() failed");
+    }
+    log_write("updated batch state to IN_PROGRESS");
 
     echo "<batch_id>$batch_id</batch_id>
         </submit_batch>
@@ -478,10 +551,12 @@ function create_batch($r) {
     $batch_name = (string)($r->batch_name);
     $batch_name = BoincDb::escape_string($batch_name);
     $expire_time = (double)($r->expire_time);
+    $state = BATCH_STATE_INIT;
     $batch_id = BoincBatch::insert(
-        "(user_id, create_time, name, app_id, state, expire_time) values ($user->id, $now, '$batch_name', $app->id, ".BATCH_STATE_INIT.", $expire_time)"
+        "(user_id, create_time, logical_start_time, logical_end_time, est_completion_time, njobs, fraction_done, nerror_jobs, state, completion_time, credit_estimate, credit_canonical, credit_total, name, app_id, project_state, description, expire_time) values ($user->id, $now, 0, 0, 0, 0, 0, 0, $state, 0, 0, 0, 0, '$batch_name', $app->id, 0, '', $expire_time)"
     );
     if (!$batch_id) {
+        log_write("Can't create batch: ".BoincDb::error());
         xml_error(-1, "Can't create batch: ".BoincDb::error());
     }
     echo "<batch_id>$batch_id</batch_id>
@@ -543,22 +618,22 @@ function n_outfiles($wu) {
 // error:
 
 function show_job_details($wu) {
-    if ($wu->error_mask && WU_ERROR_COULDNT_SEND_RESULT) {
+    if ($wu->error_mask & WU_ERROR_COULDNT_SEND_RESULT) {
         echo "   <error>couldnt_send_result</error>\n";
     }
-    if ($wu->error_mask && WU_ERROR_TOO_MANY_ERROR_RESULTS) {
+    if ($wu->error_mask & WU_ERROR_TOO_MANY_ERROR_RESULTS) {
         echo "   <error>too_many_error_results</error>\n";
     }
-    if ($wu->error_mask && WU_ERROR_TOO_MANY_SUCCESS_RESULTS) {
+    if ($wu->error_mask & WU_ERROR_TOO_MANY_SUCCESS_RESULTS) {
         echo "   <error>too_many_success_results</error>\n";
     }
-    if ($wu->error_mask && WU_ERROR_TOO_MANY_TOTAL_RESULTS) {
+    if ($wu->error_mask & WU_ERROR_TOO_MANY_TOTAL_RESULTS) {
         echo "   <error>too_many_total_results</error>\n";
     }
-    if ($wu->error_mask && WU_ERROR_CANCELLED) {
+    if ($wu->error_mask & WU_ERROR_CANCELLED) {
         echo "   <error>cancelled</error>\n";
     }
-    if ($wu->error_mask && WU_ERROR_NO_CANONICAL_RESULT) {
+    if ($wu->error_mask & WU_ERROR_NO_CANONICAL_RESULT) {
         echo "   <error>no_canonical_result</error>\n";
     }
     $results = BoincResult::enum("workunitid=$wu->id");
@@ -569,7 +644,7 @@ function show_job_details($wu) {
             $in_progress++;
             break;
         }
-        if ($wu->error_mask && $r->outcome == RESULT_OUTCOME_CLIENT_ERROR) {
+        if ($wu->error_mask && ($r->outcome == RESULT_OUTCOME_CLIENT_ERROR)) {
             echo "            <exit_status>$r->exit_status</exit_status>\n";
         }
         if ($r->id == $wu->canonical_resultid) {
@@ -604,9 +679,13 @@ function get_batch($r) {
         $batch_name = BoincDb::escape_string($batch_name);
         $batch = BoincBatch::lookup_name($batch_name);
     } else {
+        log_write("batch not specified");
         xml_error(-1, "batch not specified");
     }
-    if (!$batch) xml_error(-1, "no such batch");
+    if (!$batch) {
+        log_write("no such batch");
+        xml_error(-1, "no such batch");
+    }
     return $batch;
 }
 
@@ -615,6 +694,7 @@ function query_batch($r) {
     list($user, $user_submit) = authenticate_user($r, null);
     $batch = get_batch($r);
     if ($batch->user_id != $user->id) {
+        log_write("not owner of batch");
         xml_error(-1, "not owner of batch");
     }
 
@@ -661,9 +741,11 @@ function query_batch2($r) {
         $batch_name = BoincDb::escape_string($batch_name);
         $batch = BoincBatch::lookup_name($batch_name);
         if (!$batch) {
+            log_write("no batch named $batch_name");
             xml_error(-1, "no batch named $batch_name");
         }
         if ($batch->user_id != $user->id) {
+            log_write("not owner of $batch_name");
             xml_error(-1, "not owner of $batch_name");
         }
         $batches[] = $batch;
@@ -713,9 +795,13 @@ function query_job($r) {
     list($user, $user_submit) = authenticate_user($r, null);
     $job_id = (int)($r->job_id);
     $wu = BoincWorkunit::lookup_id($job_id);
-    if (!$wu) xml_error(-1, "no such job");
+    if (!$wu) {
+        log_write("no such job");
+        xml_error(-1, "no such job");
+    }
     $batch = BoincBatch::lookup_id($wu->batch);
     if ($batch->user_id != $user->id) {
+        log_write("not owner");
         xml_error(-1, "not owner");
     }
     $results = BoincResult::enum("workunitid=$job_id");
@@ -753,9 +839,13 @@ function query_completed_job($r) {
     $job_name = (string)($r->job_name);
     $job_name = BoincDb::escape_string($job_name);
     $wu = BoincWorkunit::lookup("name='$job_name'");
-    if (!$wu) xml_error(-1, "no such job");
+    if (!$wu) {
+        log_write("no such job");
+        xml_error(-1, "no such job");
+    }
     $batch = BoincBatch::lookup_id($wu->batch);
     if ($batch->user_id != $user->id) {
+        log_write("not owner");
         xml_error(-1, "not owner");
     }
 
@@ -797,6 +887,7 @@ function handle_abort_batch($r) {
     list($user, $user_submit) = authenticate_user($r, null);
     $batch = get_batch($r);
     if ($batch->user_id != $user->id) {
+        log_write("not owner");
         xml_error(-1, "not owner");
     }
     abort_batch($batch);
@@ -815,15 +906,18 @@ function handle_abort_jobs($r) {
         $job_name = BoincDb::escape_string($job_name);
         $wu = BoincWorkunit::lookup("name='$job_name'");
         if (!$wu) {
+            log_write("no job $job_name");
             xml_error(-1, "no job $job_name");
         }
         if (!$wu->batch) {
+            log_write("job $job_name is not part of a batch");
             xml_error(-1, "job $job_name is not part of a batch");
         }
         if (!$batch || $wu->batch != $batch->id) {
             $batch = BoincBatch::lookup_id($wu->batch);
         }
         if (!$batch || $batch->user_id != $user->id) {
+            log_write("not owner of batch");
             xml_error(-1, "not owner of batch");
         }
         echo "<aborted $job_name>\n";
@@ -839,6 +933,7 @@ function handle_retire_batch($r) {
     list($user, $user_submit) = authenticate_user($r, null);
     $batch = get_batch($r);
     if ($batch->user_id != $user->id) {
+        log_write("not owner of batch");
         xml_error(-1, "not owner of batch");
     }
     retire_batch($batch);
@@ -852,12 +947,14 @@ function handle_set_expire_time($r) {
     list($user, $user_submit) = authenticate_user($r, null);
     $batch = get_batch($r);
     if ($batch->user_id != $user->id) {
+        log_write("not owner of batch");
         xml_error(-1, "not owner of batch");
     }
     $expire_time = (double)($r->expire_time);
     if ($batch->update("expire_time=$expire_time")) {
         echo "<success>1</success>";
     } else {
+        log_write("batch update failed");
         xml_error(-1, "batch update failed");
     }
     echo "</set_expire_time>\n";
@@ -878,6 +975,7 @@ function get_templates($r) {
     $in = file_get_contents(project_dir() . "/templates/".$app->name."_in");
     $out = file_get_contents(project_dir() . "/templates/".$app->name."_out");
     if ($in === false || $out === false) {
+        log_write("template file missing");
         xml_error(-1, "template file missing");
     }
     echo "<templates>\n$in\n$out\n</templates>
@@ -949,13 +1047,13 @@ estimate_batch($r);
 exit;
 }
 
-$request_log = parse_config(get_config(), "<remote_submission_log>");
+// optionally write request message (XML) to log file
+//
+$request_log = parse_config(get_config(), "<remote_submit_request_log>");
 if ($request_log) {
-    $request_log_dir = parse_config(get_config(), "<log_dir>");
-    if ($request_log_dir) {
-        $request_log = $request_log_dir . "/" . $request_log;
-    }
-    if ($file = fopen($request_log, "a+")) {
+    $log_dir = parse_config(get_config(), "<log_dir>");
+    $request_log = $log_dir . "/" . $request_log;
+    if ($file = fopen($request_log, "a")) {
         fwrite($file, "\n<submit_rpc_handler date=\"" . date(DATE_ATOM) . "\">\n" . $_POST['request'] . "\n</submit_rpc_handler>\n");
         fclose($file);
     }
@@ -963,14 +1061,17 @@ if ($request_log) {
 
 xml_header();
 if (0) {
-    $r = file_get_contents("submit_req.xml");
+    $req = file_get_contents("submit_req.xml");
 } else {
-    $r = $_POST['request'];
+    $req = $_POST['request'];
 }
-$r = simplexml_load_string($r);
+$r = simplexml_load_string($req);
 if (!$r) {
-    xml_error(-1, "can't parse request message");
+    log_write("----- RPC request: can't parse request message: $req");
+    xml_error(-1, "can't parse request message: $req");
 }
+
+log_write("----- Handling RPC; command ".$r->getName());
 
 switch ($r->getName()) {
     case 'abort_batch': handle_abort_batch($r); break;
@@ -987,7 +1088,12 @@ switch ($r->getName()) {
     case 'retire_batch': handle_retire_batch($r); break;
     case 'set_expire_time': handle_set_expire_time($r); break;
     case 'submit_batch': submit_batch($r); break;
-    default: xml_error(-1, "bad command: ".$r->getName());
+    default:
+        log_write("bad command");
+        xml_error(-1, "bad command: ".$r->getName());
+        break;
 }
+
+log_write("RPC done");
 
 ?>

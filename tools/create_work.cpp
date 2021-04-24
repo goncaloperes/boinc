@@ -1,6 +1,6 @@
 // This file is part of BOINC.
 // http://boinc.berkeley.edu
-// Copyright (C) 2015 University of California
+// Copyright (C) 2020 University of California
 //
 // BOINC is free software; you can redistribute it and/or modify it
 // under the terms of the GNU Lesser General Public License
@@ -20,6 +20,11 @@
 // run from PHP script for remote job submission.
 //
 // see http://boinc.berkeley.edu/trac/wiki/JobSubmission
+//
+// This program can be used in two ways:
+// - to create a single job, with everything passed on the cmdline
+// - to create multiple jobs, where per-job info is passed via stdin,
+//      one line per job
 
 #include "config.h"
 
@@ -55,7 +60,6 @@ void usage() {
         "\n"
         "Options:\n"
         "   --appname name\n"
-        "   [ --additional_xml x ]\n"
         "   [ --app_version_num N ]\n"
         "   [ --batch n ]\n"
         "   [ --broadcast ]\n"
@@ -63,6 +67,7 @@ void usage() {
         "   [ --broadcast_team ID ]\n"
         "   [ --command_line \"X\" ]\n"
         "   [ --config_dir path ]\n"
+        "   [ --credit X ]\n"
         "   [ -d n ]\n"
         "   [ --delay_bound x ]\n"
         "   [ --hr_class n ]\n"
@@ -122,7 +127,6 @@ struct JOB_DESC {
     char result_template_path[MAXPATHLEN];
     vector <INFILE_DESC> infiles;
     char* command_line;
-    char additional_xml[256];
     bool assign_flag;
     bool assign_multi;
     int assign_id;
@@ -135,24 +139,24 @@ struct JOB_DESC {
         assign_multi = false;
         strcpy(wu_template_file, "");
         strcpy(result_template_file, "");
-        strcpy(additional_xml, "");
         assign_id = 0;
         assign_type = ASSIGN_NONE;
 
         // defaults (in case they're not in WU template)
         //
         wu.id = 0;
-        wu.min_quorum = 2;
-        wu.target_nresults = 2;
-        wu.max_error_results = 3;
-        wu.max_total_results = 10;
-        wu.max_success_results = 6;
-        wu.rsc_fpops_est = 3600e9;
-        wu.rsc_fpops_bound =  86400e9;
-        wu.rsc_memory_bound = 5e8;
-        wu.rsc_disk_bound = 1e9;
+        wu.min_quorum = DEFAULT_MIN_QUORUM;
+        wu.target_nresults = DEFAULT_TARGET_NRESULTS;
+        wu.max_error_results = DEFAULT_MAX_ERROR_RESULTS;
+        wu.max_total_results = DEFAULT_MAX_TOTAL_RESULTS;
+        wu.max_success_results = DEFAULT_MAX_SUCCESS_RESULTS;
+        wu.rsc_fpops_est = DEFAULT_RSC_FPOPS_EST;
+        wu.rsc_fpops_bound =  DEFAULT_RSC_FPOPS_BOUND;
+        wu.rsc_memory_bound = DEFAULT_RSC_MEMORY_BOUND;
+        wu.rsc_disk_bound = DEFAULT_RSC_DISK_BOUND;
         wu.rsc_bandwidth_bound = 0.0;
-        wu.delay_bound = 7*86400;
+            // Not used
+        wu.delay_bound = DEFAULT_DELAY_BOUND;
 
     }
     void create();
@@ -188,6 +192,8 @@ void JOB_DESC::parse_cmdline(int argc, char** argv) {
             assign_type = ASSIGN_USER;
             assign_id = atoi(argv[++i]);
             check_assign_id(assign_id);
+        } else if (arg(argv, i, (char*)"priority")) {
+            wu.priority = atoi(argv[++i]);
         } else {
             if (!strncmp("-", argv[i], 1)) {
                 fprintf(stderr, "create_work: bad stdin argument '%s'\n", argv[i]);
@@ -262,6 +268,8 @@ int main(int argc, char** argv) {
             jd.wu.batch = atoi(argv[++i]);
         } else if (arg(argv, i, "priority")) {
             jd.wu.priority = atoi(argv[++i]);
+        } else if (arg(argv, i, "credit")) {
+            jd.wu.canonical_credit = atof(argv[++i]);
         } else if (arg(argv, i, "rsc_fpops_est")) {
             jd.wu.rsc_fpops_est = atof(argv[++i]);
         } else if (arg(argv, i, "rsc_fpops_bound")) {
@@ -292,8 +300,6 @@ int main(int argc, char** argv) {
             jd.wu.opaque = atoi(argv[++i]);
         } else if (arg(argv, i, "command_line")) {
             jd.command_line= argv[++i];
-        } else if (arg(argv, i, "additional_xml")) {
-            safe_strcpy(jd.additional_xml, argv[++i]);
         } else if (arg(argv, i, "wu_id")) {
             jd.wu.id = atoi(argv[++i]);
         } else if (arg(argv, i, "broadcast")) {
@@ -434,9 +440,11 @@ int main(int argc, char** argv) {
                 char* p = fgets(buf, sizeof(buf), stdin);
                 if (p == NULL) break;
                 JOB_DESC jd2 = jd;
+                    // things default to what was passed on cmdline
                 strcpy(jd2.wu.name, "");
                 _argc = parse_command_line(buf, _argv);
                 jd2.parse_cmdline(_argc, _argv);
+                    // get info from stdin line
                 if (!strlen(jd2.wu.name)) {
                     sprintf(jd2.wu.name, "%s_%d", jd.wu.name, j);
                 }
@@ -489,7 +497,7 @@ int main(int argc, char** argv) {
                     jd2.infiles,
                     config,
                     jd2.command_line,
-                    jd2.additional_xml,
+                    NULL,
                     value_buf
                 );
                 if (retval) {
@@ -557,8 +565,7 @@ void JOB_DESC::create() {
         result_template_path,
         infiles,
         config,
-        command_line,
-        additional_xml
+        command_line
     );
     if (retval) {
         fprintf(stderr, "create_work: %s\n", boincerror(retval));
@@ -584,5 +591,3 @@ void JOB_DESC::create() {
         }
     }
 }
-
-const char *BOINC_RCSID_3865dbbf46 = "$Id$";

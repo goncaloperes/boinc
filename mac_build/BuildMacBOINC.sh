@@ -32,6 +32,8 @@
 # Updated 3/13/16 to add -target and -setting optional arguments
 # Updated 10/17/17 to fix bug when -all argument is implied but not explicitly passed
 # Updated 10/19/17 Special handling of screensaver build is no longer needed
+# Updated 10/14/18 for Xcode 10 (use this script only with BOINC 7.15 or later)
+# Updated 3/31/21 To eliminate redundant -c++11 arg since C++11 build is now standard
 #
 ## This script requires OS 10.8 or later
 #
@@ -45,10 +47,10 @@
 ##     cd [path]/boinc/mac_build
 ##
 ## then invoke this script as follows:
-##      source BuildMacBOINC.sh [-dev] [-noclean] [-libc++] [-c++11] [-all] [-lib] [-client] [-target targetName] [-setting name value] [-help]
+##      source BuildMacBOINC.sh [-dev] [-noclean] [-libstdc++] [-all] [-lib] [-client] [-target targetName] [-setting name value] [-help]
 ## or
 ##      chmod +x BuildMacBOINC.sh
-##      ./BuildMacBOINC.sh [-dev] [-noclean] [-libc++] [-c++11] [-all] [-lib] [-client] [-target targetName] [-setting name value] [-help]
+##      ./BuildMacBOINC.sh [-dev] [-noclean] [-libstdc++] [-all] [-lib] [-client] [-target targetName] [-setting name value] [-help]
 ##
 ## optional arguments
 ## -dev         build the development (debug) version.
@@ -57,9 +59,8 @@
 ## -noclean     don't do a "clean" of each target before building.
 ##              default is to clean all first.
 ##
-## -libc++      build using libc++ instead of libstdc++ (requires OS 10.7)
+## -libstdc++   build using libstdc++ instead of libc++
 ##
-## -c++11       build using c++11 language dialect instead of default (requires libc++)
 ##
 ##  The following arguments determine which targets to build
 ##
@@ -83,7 +84,6 @@
 
 targets=""
 doclean="clean"
-cplusplus11dialect=""
 uselibcplusplus=""
 buildall=0
 buildlibs=0
@@ -96,8 +96,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     -noclean ) doclean="" ; shift 1 ;;
     -dev ) style="Development" ; shift 1 ;;
-    -libc++ ) uselibcplusplus="CLANG_CXX_LIBRARY=libc++ MACOSX_DEPLOYMENT_TARGET=10.7" ; shift 1 ;;
-    -c++11 ) cplusplus11dialect="CLANG_CXX_LANGUAGE_STANDARD=c++11" ; shift 1 ;;
+    -libstdc++ ) uselibcplusplus="CLANG_CXX_LIBRARY=libstdc++" ; shift 1 ;;
     -all ) buildall=1 ; shift 1 ;;
     -lib ) buildlibs=1 ; shift 1 ;;
     -client ) buildclient=1 ; shift 1 ;;
@@ -144,8 +143,8 @@ major=`echo $version | sed 's/\([0-9]*\)[.].*/\1/' `;
 # Darwin version 7.x.y corresponds to OS 10.3.x
 # Darwin version 6.x corresponds to OS 10.2.x
 
-if [ "$major" -lt "10" ]; then
-    echo "ERROR: Building BOINC requires System 10.6 or later.  For details, see build instructions at"
+if [ "$major" -lt "11" ]; then
+    echo "ERROR: Building BOINC requires System 10.7 or later.  For details, see build instructions at"
     echo "boinc/mac_build/HowToBuildBOINC_XCode.rtf or http://boinc.berkeley.edu/trac/wiki/MacBuild"
     return 1
 fi
@@ -154,7 +153,7 @@ if [ "${style}" = "Development" ]; then
     echo "Development (debug) build"
 else
     style="Deployment"
-    echo "Deployment (release) build for architectures: i386, x86_64"
+    echo "Deployment (release) build for architecture: x86_64"
 fi
 
 echo ""
@@ -162,7 +161,7 @@ echo ""
 SDKPATH=`xcodebuild -version -sdk macosx Path`
 result=0
 
-xcodebuild -project boinc.xcodeproj ${targets} -configuration ${style} -sdk "${SDKPATH}" ${doclean} build ${uselibcplusplus} ${cplusplus11dialect} "${settings[@]}"
+xcodebuild -project boinc.xcodeproj ${targets} -configuration ${style} -sdk "${SDKPATH}" ${doclean} build ${uselibcplusplus} "${settings[@]}"
 result=$?
 
 if [ $result -eq 0 ]; then
@@ -170,7 +169,7 @@ if [ $result -eq 0 ]; then
     # default is none of { -all, -lib, -client }
     if [ "${buildall}" = "1" ] || [ "${buildlibs}" = "1" ] || [ "${buildclient}" = "0" ]; then
         if [ "${buildzip}" = "1" ]; then
-            xcodebuild -project ../zip/boinc_zip.xcodeproj -target boinc_zip -configuration ${style} -sdk "${SDKPATH}" ${doclean} build  ${uselibcplusplus} ${cplusplus11dialect}
+            xcodebuild -project ../zip/boinc_zip.xcodeproj -target boinc_zip -configuration ${style} -sdk "${SDKPATH}" ${doclean} build  ${uselibcplusplus}
             result=$?
         fi
     fi

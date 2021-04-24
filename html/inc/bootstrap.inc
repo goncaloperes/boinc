@@ -89,9 +89,12 @@ function navbar_right($user) {
             );
         } else {
             echo sprintf('
-                <li><a href="%screate_account_form.php">Sign Up</a></li>
-                <li><a href="%slogin_form.php">Login</a></li>
-                ', url_base(), url_base()
+                <li><a href="%ssignup.php">%s</a></li>
+                <li><a href="%slogin_form.php">%s</a></li>
+                ', url_base(),
+                tra("Join"),
+                url_base(),
+                tra("Login")
             );
         }
     }
@@ -158,7 +161,7 @@ function sample_navbar(
         $x[] = array(tra("Preferences"), $url_prefix."prefs.php?subset=project");
     }
     $x[] = array(tra("About %1", PROJECT), $url_prefix."about.php");
-    $x[] = array(tra("Help"), $url_prefix."help.php");
+    $x[] = array(tra("Help"), $url_prefix."welcome.php");
     navbar_menu(tra("Project"), $x);
 
     if (NO_COMPUTING) {
@@ -173,24 +176,17 @@ function sample_navbar(
         $x = array(
             array(tra("Preferences"), $url_prefix."prefs.php?subset=global"),
             array(tra("Server status"), $url_prefix."server_status.php"),
-            array(tra("Statistics"), $url_prefix."stats.php"),
+            array(tra("Credit statistics"), $url_prefix."stats.php"),
             array(tra("Applications"), $url_prefix."apps.php"),
+            array(tra("GPU models"), $url_prefix."gpu_list.php"),
+            array(tra("CPU models"), $url_prefix."cpu_list.php"),
+            array(tra("Computer types"), $url_prefix."host_stats.php"),
         );
         if (defined('REMOTE_JOB_SUBMISSION') && REMOTE_JOB_SUBMISSION) {
             if ($user && BoincUserSubmit::lookup_userid($user->id)) {
                 $x[] = array("Job submission", $url_prefix."submit.php");
             }
         }
-        $x = array_merge($x,
-            array(
-                'Leader boards:',
-                array(tra("Participants"), $url_prefix."top_users.php"),
-                array(tra("Computers"), $url_prefix."top_hosts.php"),
-                array(tra("Teams"), $url_prefix."top_teams.php"),
-                array(tra("GPU models"), $url_prefix."gpu_list.php"),
-                array(tra("CPU models"), $url_prefix."cpu_list.php"),
-            )
-        );
         navbar_menu(tra("Computing"), $x);
     }
 
@@ -202,7 +198,7 @@ function sample_navbar(
         array(tra("Preferences"), $url_prefix."edit_forum_preferences_form.php"),
         array(tra("User search"), $url_prefix."user_search.php"),
         array(tra("User of the day"), $url_prefix."uotd.php"),
-        array(tra("Certificate"), $url_prefix."cert1.php", "", "_blank"),
+        array(tra("Certificate"), $url_prefix.cert_filename(), "", "_blank"),
     ));
     navbar_menu(tra("Site"), array(
         array(tra("Site search"), $url_prefix."site_search.php"),
@@ -218,7 +214,7 @@ function sample_navbar(
 // output a panel.
 // $content_func is a function that generates the panel contents
 //
-function panel($title, $content_func, $class="panel-primary") {
+function panel($title, $content_func, $class="panel-primary", $body_class="") {
     echo sprintf('<div class="panel %s">
         ', $class
     );
@@ -229,9 +225,9 @@ function panel($title, $content_func, $class="panel-primary") {
             </div>
         ';
     }
-    echo '
-        <div class="panel-body">
-    ';
+    echo sprintf('<div class="panel-body %s">
+        ', $body_class
+    );
     $content_func();
     echo '
         </div>
@@ -387,7 +383,7 @@ function form_select_multiple($label, $name, $items, $flags) {
 
 // $items is list of (name, label, checked)
 //
-function form_checkboxes($label, $items) {
+function form_checkboxes($label, $items, $attrs='') {
     echo sprintf('
         <div class="form-group">
             <label class="control-label %s">%s</label>
@@ -402,9 +398,9 @@ function form_checkboxes($label, $items) {
         } else {
             echo "<br>\n";
         }
-        echo sprintf('<input type="checkbox" name="%s" %s> %s
+        echo sprintf('<input %s type="checkbox" name="%s" %s> %s
             ',
-            $i[0], $i[2]?"checked":"", $i[1]
+            $attrs, $i[0], $i[2]?"checked":"", $i[1]
         );
     }
     echo '</div>
@@ -456,11 +452,11 @@ function form_general($label, $item) {
 ';
 }
 
-function form_submit($text) {
+function form_submit($text, $attrs='') {
     form_general(
         "",
-        sprintf('<button type="submit" class="btn btn-success">%s</button>',
-            $text
+        sprintf('<button %s type="submit" class="btn btn-success">%s</button>',
+            $attrs, $text
         )
     );
 }

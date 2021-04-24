@@ -1,6 +1,6 @@
 // This file is part of BOINC.
 // http://boinc.berkeley.edu
-// Copyright (C) 2008 University of California
+// Copyright (C) 2020 University of California
 //
 // BOINC is free software; you can redistribute it and/or modify it
 // under the terms of the GNU Lesser General Public License
@@ -299,6 +299,9 @@
 /* Define to 1 if you have the <unistd.h> header file. */
 #define HAVE_UNISTD_H 1
 
+/* Define to 1 if you have the `uselocale' function. */
+#define HAVE_USELOCALE 1
+
 /* Define to 1 if you have the <utmp.h> header file. */
 #define HAVE_UTMP_H 1
 
@@ -334,8 +337,11 @@
 /* #undef HAVE__PROC_SELF_STAT */
 
 /* Host for this compilation */
-/* "i686-apple-darwin", "x86_64-apple-darwin" or "powerpc-apple-darwin" determined at run time */
-#define HOSTTYPE ""
+#ifdef __x86_64__
+#define HOSTTYPE "x86_64-apple-darwin"
+#elif defined(__arm64__)
+#define HOSTTYPE "arm64-apple-darwin"
+#endif
 
 /* "Define to 1 if largefile support causes missing symbols in C++" */
 /* #undef LARGEFILE_BREAKS_CXX */

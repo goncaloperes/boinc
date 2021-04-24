@@ -1,6 +1,6 @@
 // This file is part of BOINC.
 // http://boinc.berkeley.edu
-// Copyright (C) 2017 University of California
+// Copyright (C) 2020 University of California
 //
 // BOINC is free software; you can redistribute it and/or modify it
 // under the terms of the GNU Lesser General Public License
@@ -27,6 +27,7 @@
 // The declarations below must be kept in sync with
 // the corresponding ones in Mac_Saver_ModuleView.h
 #ifdef _DEBUG
+    #undef _T
     #define _T(x) x
 #endif
 
@@ -56,6 +57,10 @@ void            launchedGfxApp(char * appPath, pid_t thePID, int slot);
 void            print_to_log_file(const char *format, ...);
 void            strip_cr(char *buf);
 void            PrintBacktrace(void);
+extern char     gUserName[64];
+extern bool     gIsMojave;
+extern bool     gIsCatalina;
+extern bool     gIsHighSierra;
 
 #ifdef __cplusplus
 }	// extern "C"
@@ -84,20 +89,20 @@ public:
     int             Create();
     int             Run();
 
-
     //
     // Infrastructure layer 
     //
 protected:
     OSStatus        initBOINCApp(void);
     int             GetBrandID(void);
-    char*           PersistentFGets(char *buf, size_t buflen, FILE *f);
-    pid_t           FindProcessPID(char* name, pid_t thePID);
+    pid_t           getClientPID(void);
     void            updateSSMessageText(char *msg);
     void            strip_cr(char *buf);
     char            m_gfx_Switcher_Path[PATH_MAX];
+    char            m_gfx_Cleanup_Path[PATH_MAX];
+    FILE*           m_gfx_Cleanup_IPC;
     void            SetDiscreteGPU(bool setDiscrete);
-    void            CheckDualGPUStatus();
+    void            CheckDualGPUPowerSource();
     bool            Host_is_running_on_batteries();
     
     bool            m_bErrorMode;        // Whether to draw moving logo and possibly display an error
@@ -122,7 +127,7 @@ protected:
 
     void*           DataManagementProc();
     static void*    DataManagementProcStub( void* param );
-    int             terminate_v6_screensaver(int& graphics_application);
+    int             terminate_screensaver(int& graphics_application, RESULT *worker_app);
     int             terminate_default_screensaver(int& graphics_application);
     int             launch_screensaver(RESULT* rp, int& graphics_application);
     int             launch_default_screensaver(char *dir_path, int& graphics_application);
@@ -165,7 +170,7 @@ public:
     bool            SetError( bool bErrorMode, unsigned int hrError );
     void            setSSMessageText(const char *msg);
 
-    int             terminate_screensaver(int& graphics_application, RESULT *worker_app);
+    int             terminate_v6_screensaver(int& graphics_application, RESULT* rp);
     bool            HasProcessExited(pid_t pid, int &exitCode);
 
     CC_STATE        state;

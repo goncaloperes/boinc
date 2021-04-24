@@ -81,6 +81,7 @@ function boinc_theme(&$existing, $type, $theme, $path) {
  * Adjust the rendering of the menu
  */
 function boinc_links__system_main_menu($links, $menu, $element) {
+  $html = '';
   $html .= '<ul id="' . $menu['id'] . '" class="' . $menu['class'] . '">' . "\n";
   $item_count = count($links);
   $i = 1;
@@ -191,6 +192,10 @@ function boinc_preprocess_page(&$vars, $hook) {
       $lang_code = explode('-', $language->language);
       $locality = $lang_code[0];
     }
+  }
+  // If there is no language set for some reason, default to English (en).
+  if (empty($locality)) {
+    $locality = "en";
   }
   $vars['flag_path'] = base_path() . path_to_theme() . "/images/flags/{$locality}.png";
 

@@ -1,6 +1,6 @@
 // This file is part of BOINC.
 // http://boinc.berkeley.edu
-// Copyright (C) 2008 University of California
+// Copyright (C) 2020 University of California
 //
 // BOINC is free software; you can redistribute it and/or modify it
 // under the terms of the GNU Lesser General Public License
@@ -24,10 +24,8 @@
 //
 // 2) a better one (class XML_PARSER) which parses arbitrary XML
 
-#if   defined(_WIN32) && !defined(__STDWX_H__)
+#if defined(_WIN32)
 #include "boinc_win.h"
-#elif defined(_WIN32) && defined(__STDWX_H__)
-#include "stdwx.h"
 #else
 #include "config.h"
 #include <cstring>
@@ -53,6 +51,28 @@
 #include "parse.h"
 
 using std::string;
+
+unsigned long long boinc_strtoull(const char *str, char **endptr, int base) {
+#if (defined (__cplusplus) && __cplusplus > 199711L) || defined(HAVE_STRTOULL) || defined(__MINGW32__)
+    return strtoull(str, endptr, base);
+#elif defined(_WIN32) && !defined(__MINGW32__)
+    return _strtoui64(str, endptr, base);
+#else
+    char buf[64];
+    char *p;
+    unsigned long long y;
+    strncpy(buf, str, sizeof(buf)-1);
+    strip_whitespace(buf);
+    p = strstr(buf, "0x");
+    if (!p) p = strstr(buf, "0X");
+    if (p) {
+        sscanf(p, "%llx", &y);
+    } else {
+        sscanf(buf, "%llu", &y);
+    }
+    return y;
+#endif
+}
 
 // Parse a boolean; tag is of form "foobar"
 // Accept either <foobar/>, <foobar />, or <foobar>0|1</foobar>
@@ -309,7 +329,7 @@ void extract_venue(const char* in, const char* venue_name, char* out, int len) {
 char* sgets(char* buf, int len, char*& in) {
     char* p;
 
-    p = strstr(in, "\n");
+    p = strchr(in, '\n');
     if (!p) return NULL;
     *p = 0;
     strlcpy(buf, in, len);
@@ -371,6 +391,15 @@ void xml_escape(const char* in, char* out, int len) {
                 p += strlen(buf);
                 break;
             }
+        } else if (x == ']') {
+            // two stage check, strncmp() is slow
+            if (!strncmp(in, "]]>", 3)) {
+                strcpy(p, "]]&gt;");
+                p += 6;
+                in += 2;  // +1 from for loop
+            } else {
+                *p++ = x;
+            }
         } else {
             *p++ = x;
         }
@@ -394,7 +423,9 @@ void xml_unescape(char* buf) {
     char* out = buf;
     char* in = buf;
     char* p;
+    bool goodescape;
     while (*in) {
+        goodescape = false;
         if (*in != '&') {       // avoid strncmp's if possible
             *out++ = *in++;
         } else if (!strncmp(in, "&lt;", 4)) {
@@ -403,24 +434,49 @@ void xml_unescape(char* buf) {
         } else if (!strncmp(in, "&gt;", 4)) {
             *out++ = '>';
             in += 4;
-        } else if (!strncmp(in, "&quot;", 4)) {
+        } else if (!strncmp(in, "&quot;", 6)) {
             *out++ = '"';
             in += 6;
-        } else if (!strncmp(in, "&apos;", 4)) {
+        } else if (!strncmp(in, "&apos;", 6)) {
             *out++ = '\'';
             in += 6;
         } else if (!strncmp(in, "&amp;", 5)) {
             *out++ = '&';
             in += 5;
+        } else if (!strncmp(in, "&#xD;", 5) || !strncmp(in, "&#xd;", 5)) {
+            *out++ = '\r';
+            in += 5;
+        } else if (!strncmp(in, "&#xA;", 5) || !strncmp(in, "&#xa;", 5)) {
+            *out++ = '\n';
+            in += 5;
         } else if (!strncmp(in, "&#", 2)) {
+            //If escape is poorly formed or outside of char size, then print as is.
             in += 2;
-            char c = atoi(in);
-            *out++ = c;
             p = strchr(in, ';');
-            if (p) {
-                in = p+1; 
+            if (!p || *in == ';') { //No end semicolon found or it was formatted as &#;
+                *out++ = '&';
+                *out++ = '#';
             } else {
-                while (isdigit(*in)) in++;
+                //Check that escape is formed correctly
+                for (unsigned int i = 0; i < 4 || i < strlen(in); i++) {
+                    if (!isdigit(*(in + i)) && *(in + i) != ';') {
+                        //Found something other than a single digit.
+                        break;
+                    }
+                    if (*(in + i) == ';') {
+                        goodescape = true;
+                        break;
+                    }
+                }
+                int ascii = atoi(in);
+
+                if (goodescape && ascii < 256) {
+                    *out++ = ascii;
+                    in = p + 1;
+                } else {
+                    *out++ = '&';
+                    *out++ = '#';
+                }
             }
         } else {
             *out++ = *in++;
@@ -879,7 +935,7 @@ int XML_PARSER::copy_element(string& out) {
     out = "<";
     out += parsed_tag;
     out += ">";
-    snprintf(end_tag, sizeof(end_tag), "</%s>", parsed_tag);
+    snprintf(end_tag, sizeof(end_tag), "</%.256s>", parsed_tag);
     int retval = element_contents(end_tag, buf, sizeof(buf));
     if (retval) return retval;
     out += buf;
